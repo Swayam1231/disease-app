@@ -3,6 +3,7 @@ import numpy as np
 import pickle
 import gdown
 import os
+import re
 
 # ---------------------------
 # PAGE CONFIG
@@ -18,35 +19,13 @@ st.set_page_config(
 # ---------------------------
 st.markdown("""
 <style>
-.main {
-    background-color: #f5f7fa;
-}
-.title {
-    font-size: 40px;
-    font-weight: bold;
-    color: #2c3e50;
-}
-.subtitle {
-    font-size: 18px;
-    color: #7f8c8d;
-}
-.card {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
-}
-.result-card {
-    background: #e8f8f5;
-    padding: 20px;
-    border-radius: 12px;
-    border-left: 6px solid #1abc9c;
-}
-.warning-card {
-    background: #fff3cd;
-    padding: 15px;
-    border-radius: 10px;
-}
+.main { background-color: #f5f7fa; }
+.title { font-size: 40px; font-weight: bold; color: #2c3e50; }
+.subtitle { font-size: 18px; color: #7f8c8d; }
+.card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0px 4px 10px rgba(0,0,0,0.05); }
+.result-card { background: #e8f8f5; padding: 20px; border-radius: 12px; border-left: 6px solid #1abc9c; }
+.warning-card { background: #fff3cd; padding: 15px; border-radius: 10px; }
+.chat-bubble { background:#ffffff; padding:12px 14px; border-radius:10px; margin:6px 0; box-shadow: 0px 2px 6px rgba(0,0,0,0.06); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -56,15 +35,11 @@ st.markdown("""
 @st.cache_resource
 def load_model():
     model_path = "disease_model.pkl"
-
     if not os.path.exists(model_path):
         url = "https://drive.google.com/uc?id=1-iHS567nLgAGSO-usLvSJ0sY65Fk1_G9"
         gdown.download(url, model_path, quiet=False)
-
     with open(model_path, "rb") as f:
-        model = pickle.load(f)
-
-    return model
+        return pickle.load(f)
 
 model = load_model()
 
@@ -119,7 +94,6 @@ disease_info = {
 # ---------------------------
 st.sidebar.title("⚙️ Settings")
 confidence_toggle = st.sidebar.checkbox("Show Confidence Score", True)
-
 st.sidebar.markdown("---")
 st.sidebar.info("Educational Project")
 
@@ -128,87 +102,135 @@ st.sidebar.info("Educational Project")
 # ---------------------------
 st.markdown('<div class="title">🩺 MediPredict AI</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Smart disease prediction using Machine Learning</div>', unsafe_allow_html=True)
-
 st.markdown("---")
 
 # ---------------------------
-# INPUT SECTION
+# HELPER: TEXT → SYMPTOMS
 # ---------------------------
-st.markdown('<div class="card">', unsafe_allow_html=True)
+def normalize(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"[^a-z\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
-st.subheader("🧾 Select Your Symptoms")
+def extract_symptoms_from_text(text, feature_list):
+    text_n = normalize(text)
+    found = []
+    for feat in feature_list:
+        # handle underscore or space variants
+        variants = {feat.lower(), feat.lower().replace("_", " ")}
+        for v in variants:
+            if v in text_n:
+                found.append(feat)
+                break
+    return list(set(found))
 
-selected_symptoms = st.multiselect(
-    "Choose symptoms",
-    columns
-)
+def build_input_vector(selected, feature_list):
+    vec = np.zeros(len(feature_list))
+    for s in selected:
+        if s in feature_list:
+            vec[feature_list.index(s)] = 1
+    return vec
 
-st.markdown('</div>', unsafe_allow_html=True)
+def render_result(prediction, input_vec):
+    st.markdown('<div class="result-card">', unsafe_allow_html=True)
+    st.success(f"🩺 Predicted Disease: **{prediction}**")
 
-# ---------------------------
-# PREPARE INPUT
-# ---------------------------
-input_data = np.zeros(len(columns))
+    if confidence_toggle:
+        try:
+            probs = model.predict_proba([input_vec])[0]
+            confidence = max(probs) * 100
+            st.info(f"📊 Confidence: {confidence:.2f}%")
+        except:
+            st.warning("Confidence not available")
 
-for symptom in selected_symptoms:
-    index = columns.index(symptom)
-    input_data[index] = 1
-
-# ---------------------------
-# PREDICTION BUTTON
-# ---------------------------
-col1, col2 = st.columns([1, 3])
-
-with col1:
-    predict_btn = st.button("🔍 Predict")
-
-# ---------------------------
-# RESULT SECTION
-# ---------------------------
-if predict_btn:
-    if len(selected_symptoms) == 0:
-        st.markdown(
-            '<div class="warning-card">⚠️ Please select at least one symptom</div>',
-            unsafe_allow_html=True
-        )
+    if prediction in disease_info:
+        info = disease_info[prediction]
+        st.subheader("📖 About the Disease")
+        st.write(info["description"])
+        st.subheader("🛡️ Precautions")
+        for p in info["precautions"]:
+            st.write(f"✔️ {p}")
     else:
-        prediction = model.predict([input_data])[0]
+        st.warning("No additional info available")
 
-        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+    st.info("👨‍⚕️ Please consult a doctor for proper diagnosis.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        st.success(f"🩺 Predicted Disease: **{prediction}**")
+# ---------------------------
+# TABS: SELECT / CHATBOT
+# ---------------------------
+tab_select, tab_chat = st.tabs(["🧾 Select Symptoms", "💬 Chatbot Input"])
 
-        # Confidence
-        if confidence_toggle:
-            try:
-                probs = model.predict_proba([input_data])[0]
-                confidence = max(probs) * 100
-                st.info(f"📊 Confidence: {confidence:.2f}%")
-            except:
-                st.warning("Confidence not available")
+# ---------------------------
+# TAB 1: MULTISELECT (existing)
+# ---------------------------
+with tab_select:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Choose your symptoms")
+    selected_symptoms = st.multiselect("Symptoms", columns)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        # Disease Info
-        if prediction in disease_info:
-            info = disease_info[prediction]
-
-            st.subheader("📖 About the Disease")
-            st.write(info["description"])
-
-            st.subheader("🛡️ Precautions")
-            for p in info["precautions"]:
-                st.write(f"✔️ {p}")
+    if st.button("🔍 Predict (Select)"):
+        if not selected_symptoms:
+            st.markdown('<div class="warning-card">⚠️ Please select at least one symptom</div>', unsafe_allow_html=True)
         else:
-            st.warning("No additional info available")
+            vec = build_input_vector(selected_symptoms, columns)
+            pred = model.predict([vec])[0]
+            render_result(pred, vec)
 
-        st.info("👨‍⚕️ Please consult a doctor for proper diagnosis.")
+# ---------------------------
+# TAB 2: CHATBOT INPUT
+# ---------------------------
+with tab_chat:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Describe your symptoms in natural language")
+    st.caption("Example: I have fever, headache and vomiting since yesterday")
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    user_text = st.text_area("Type your symptoms here")
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    if st.button("🧠 Analyze Symptoms"):
+        if not user_text.strip():
+            st.warning("Please enter your symptoms.")
+        else:
+            extracted = extract_symptoms_from_text(user_text, columns)
+
+            st.session_state.chat_history.append(("user", user_text))
+            if extracted:
+                st.session_state.chat_history.append(("bot", f"Detected symptoms: {', '.join(extracted)}"))
+                vec = build_input_vector(extracted, columns)
+                pred = model.predict([vec])[0]
+                st.session_state.chat_history.append(("bot", f"Predicted Disease: {pred}"))
+            else:
+                st.session_state.chat_history.append(("bot", "I couldn't match symptoms. Try using clearer keywords."))
+
+    # Chat display
+    for role, msg in st.session_state.chat_history:
+        if role == "user":
+            st.markdown(f'<div class="chat-bubble"><b>🧑 You:</b> {msg}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="chat-bubble"><b>🤖 MediPredict:</b> {msg}</div>', unsafe_allow_html=True)
+
+    # Show last prediction details (if any)
+    if st.session_state.chat_history:
+        last_bot_msgs = [m for r, m in st.session_state.chat_history if r == "bot"]
+        # If a prediction message exists, recompute vector for display details
+        if last_bot_msgs and last_bot_msgs[-1].startswith("Predicted Disease:"):
+            extracted = extract_symptoms_from_text(user_text, columns)
+            if extracted:
+                vec = build_input_vector(extracted, columns)
+                pred = model.predict([vec])[0]
+                render_result(pred, vec)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
 # FOOTER
 # ---------------------------
 st.markdown("---")
-
 st.markdown("""
 <div style="text-align:center; color:gray;">
 ⚠️ This tool is for educational purposes only and not a substitute for professional medical advice.
