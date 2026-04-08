@@ -58,7 +58,6 @@ div[data-testid="stVerticalBlock"] > div:empty { display:none !important; }
 }
 </style>
 """, unsafe_allow_html=True)
-
 # ---------------------------
 # LOAD MODEL (CACHED)
 # ---------------------------
