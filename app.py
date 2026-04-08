@@ -130,34 +130,40 @@ def get_explainer(_model):
 def shap_explain(vec, predicted_class):
     st.subheader("🧠 Why this prediction? (SHAP)")
 
-    explainer = get_explainer(model)
+    try:
+        explainer = shap.TreeExplainer(model)
 
-    # SHAP values for single sample
-    shap_values = explainer.shap_values(np.array([vec]))
+        # Disable additivity check (fix)
+        shap_values = explainer.shap_values(
+            np.array([vec]),
+            check_additivity=False
+        )
 
-    # For multiclass: pick the class index
-    class_idx = list(model.classes_).index(predicted_class)
+        class_idx = list(model.classes_).index(predicted_class)
 
-    values = shap_values[class_idx][0]  # contributions for this sample
+        values = shap_values[class_idx][0]
 
-    # Pair feature names with SHAP values
-    pairs = list(zip(columns, values))
+        # Pair features with values
+        pairs = list(zip(columns, values))
 
-    # Filter only active (selected) symptoms
-    pairs = [(f, v) for f, v in pairs if vec[columns.index(f)] == 1]
+        # Only selected symptoms
+        pairs = [(f, v) for f, v in pairs if vec[columns.index(f)] == 1]
 
-    # Sort by contribution magnitude
-    pairs = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:8]
+        # Sort by importance
+        pairs = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:8]
 
-    if not pairs:
-        st.warning("No contributing symptoms found")
-        return
+        if not pairs:
+            st.warning("No contributing symptoms found")
+            return
 
-    # Display as simple bars (clean UI)
-    for feat, val in pairs:
-        direction = "🟢 increases" if val > 0 else "🔴 decreases"
-        st.write(f"**{feat}** → {direction} prediction ({val:.3f})")
+        for feat, val in pairs:
+            if val > 0:
+                st.write(f"🟢 **{feat}** → increases prediction ({val:.3f})")
+            else:
+                st.write(f"🔴 **{feat}** → decreases prediction ({val:.3f})")
 
+    except Exception as e:
+        st.error("SHAP explanation failed (model compatibility issue)")
 # ---------------------------
 # SHOW RESULTS
 # ---------------------------
