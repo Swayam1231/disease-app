@@ -3,69 +3,95 @@ import numpy as np
 import pickle
 import gdown
 import os
-import re
+import time
 
 # ---------------------------
 # PAGE CONFIG
 # ---------------------------
-st.set_page_config(
-    page_title="MediPredict AI",
-    page_icon="🩺",
-    layout="centered"
-)
+st.set_page_config(page_title="MediPredict AI", page_icon="🩺", layout="centered")
 
 # ---------------------------
-# CLEAN CSS FIX
+# ADVANCED UI CSS
 # ---------------------------
 st.markdown("""
 <style>
+
+/* REMOVE EMPTY BLOCKS */
+div[data-testid="stVerticalBlock"] > div:empty {
+    display: none !important;
+}
+
+/* GLOBAL */
 .block-container {
-    padding-top: 2rem;
+    padding-top: 1.2rem;
+    max-width: 900px;
 }
 
-.title {
-    font-size: 36px;
-    font-weight: 700;
-    color: #4cc9f0;
-}
-
-.subtitle {
-    color: #adb5bd;
-    margin-bottom: 20px;
-}
-
-.card {
-    background: #111827;
+/* HEADER */
+.header {
+    background: linear-gradient(90deg, #4cc9f0, #4361ee);
     padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+}
+.title {
+    font-size: 32px;
+    font-weight: 700;
+    color: white;
+}
+.subtitle {
+    color: #e0e7ff;
+}
+
+/* CARD */
+.card {
+    background: #0f172a;
+    padding: 18px;
     border-radius: 12px;
     border: 1px solid #1f2937;
+    margin-top: 10px;
 }
 
+/* RESULT */
 .result-card {
-    background: #0f766e;
-    padding: 20px;
-    border-radius: 12px;
-    margin-top: 20px;
+    background: #065f46;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
 }
 
+/* CHAT */
 .chat-user {
+    background: #2563eb;
+    color: white;
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin: 6px 0;
+    text-align: right;
+}
+.chat-bot {
     background: #1f2937;
-    padding: 10px;
-    border-radius: 10px;
-    margin: 5px 0;
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin: 6px 0;
 }
 
-.chat-bot {
-    background: #0f172a;
-    padding: 10px;
+/* BUTTON */
+.stButton button {
     border-radius: 10px;
-    margin: 5px 0;
+    height: 45px;
 }
+
+/* INPUT FIX */
+.stTextArea textarea {
+    border-radius: 10px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# MODEL LOADING
+# LOAD MODEL
 # ---------------------------
 @st.cache_resource
 def load_model():
@@ -82,35 +108,17 @@ with open("columns.pkl", "rb") as f:
     columns = pickle.load(f)
 
 # ---------------------------
-# DISEASE INFO
+# HEADER UI
 # ---------------------------
-disease_info = {
-    "Diabetes": {
-        "desc": "Chronic condition affecting blood sugar levels.",
-        "precautions": ["Exercise", "Healthy diet", "Monitor sugar"]
-    },
-    "Heart Disease": {
-        "desc": "Conditions affecting heart function.",
-        "precautions": ["Avoid smoking", "Exercise", "Low salt diet"]
-    },
-    "Malaria": {
-        "desc": "Mosquito-borne disease.",
-        "precautions": ["Use nets", "Avoid stagnant water"]
-    },
-    "Typhoid": {
-        "desc": "Food/water infection.",
-        "precautions": ["Clean water", "Wash hands"]
-    }
-}
+st.markdown("""
+<div class="header">
+    <div class="title">🩺 MediPredict AI</div>
+    <div class="subtitle">Smart disease prediction using Machine Learning</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------------------
-# HEADER
-# ---------------------------
-st.markdown('<div class="title">🩺 MediPredict AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Smart disease prediction using Machine Learning</div>', unsafe_allow_html=True)
-
-# ---------------------------
-# HELPER FUNCTIONS
+# HELPERS
 # ---------------------------
 def extract_symptoms(text):
     text = text.lower()
@@ -125,19 +133,11 @@ def predict(symptoms):
     for s in symptoms:
         if s in columns:
             vec[columns.index(s)] = 1
-    return model.predict([vec])[0], vec
+    return model.predict([vec])[0]
 
-def show_result(pred, vec):
+def show_result(pred):
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
-    st.success(f"🩺 Predicted: {pred}")
-
-    if pred in disease_info:
-        st.write("📖", disease_info[pred]["desc"])
-        st.write("🛡️ Precautions:")
-        for p in disease_info[pred]["precautions"]:
-            st.write("✔️", p)
-
-    st.info("Consult a doctor for proper diagnosis.")
+    st.success(f"🩺 Predicted Disease: {pred}")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
@@ -146,7 +146,7 @@ def show_result(pred, vec):
 tab1, tab2 = st.tabs(["📋 Select Symptoms", "💬 Chat Assistant"])
 
 # ---------------------------
-# TAB 1: SELECT
+# TAB 1
 # ---------------------------
 with tab1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -155,23 +155,25 @@ with tab1:
 
     if st.button("🔍 Predict"):
         if selected:
-            pred, vec = predict(selected)
-            show_result(pred, vec)
+            with st.spinner("Analyzing..."):
+                time.sleep(1)
+                pred = predict(selected)
+            show_result(pred)
         else:
             st.warning("Select symptoms first")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# TAB 2: CHAT
+# TAB 2 (CHAT UI)
 # ---------------------------
 with tab2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
-    user_input = st.text_area("Describe symptoms")
-
     if "chat" not in st.session_state:
         st.session_state.chat = []
+
+    user_input = st.text_area("Describe your symptoms", placeholder="I have fever and headache")
 
     if st.button("🧠 Analyze"):
         if user_input.strip():
@@ -179,13 +181,17 @@ with tab2:
 
             st.session_state.chat.append(("user", user_input))
 
+            with st.spinner("Thinking..."):
+                time.sleep(1)
+
             if detected:
+                pred = predict(detected)
                 st.session_state.chat.append(("bot", f"Detected: {', '.join(detected)}"))
-                pred, vec = predict(detected)
                 st.session_state.chat.append(("bot", f"Prediction: {pred}"))
             else:
                 st.session_state.chat.append(("bot", "Could not detect symptoms"))
 
+    # CHAT DISPLAY
     for role, msg in st.session_state.chat:
         if role == "user":
             st.markdown(f'<div class="chat-user">🧑 {msg}</div>', unsafe_allow_html=True)
@@ -198,4 +204,4 @@ with tab2:
 # FOOTER
 # ---------------------------
 st.markdown("---")
-st.write("⚠️ Educational use only. Not a medical diagnosis tool.")
+st.caption("⚠️ Educational use only. Not a medical diagnosis tool.")
