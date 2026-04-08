@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # ---------------------------
-# CUSTOM CSS (UI UPGRADE)
+# CUSTOM CSS
 # ---------------------------
 st.markdown("""
 <style>
@@ -68,20 +68,60 @@ def load_model():
 
 model = load_model()
 
-# Load columns
+# Load feature names
 with open("columns.pkl", "rb") as f:
     columns = pickle.load(f)
 
 # ---------------------------
-# SIDEBAR (PRO LOOK)
+# DISEASE INFO DATABASE
+# ---------------------------
+disease_info = {
+    "Diabetes": {
+        "description": "A chronic condition that affects how your body processes blood sugar.",
+        "precautions": [
+            "Maintain a balanced diet",
+            "Exercise regularly",
+            "Monitor blood sugar levels",
+            "Avoid excessive sugar intake"
+        ]
+    },
+    "Heart Disease": {
+        "description": "Conditions affecting heart function and blood vessels.",
+        "precautions": [
+            "Avoid smoking",
+            "Maintain healthy weight",
+            "Exercise regularly",
+            "Reduce salt intake"
+        ]
+    },
+    "Malaria": {
+        "description": "A mosquito-borne infectious disease caused by parasites.",
+        "precautions": [
+            "Use mosquito nets",
+            "Avoid stagnant water",
+            "Wear full-sleeve clothes",
+            "Use insect repellent"
+        ]
+    },
+    "Typhoid": {
+        "description": "A bacterial infection spread through contaminated food and water.",
+        "precautions": [
+            "Drink clean water",
+            "Wash hands regularly",
+            "Avoid street food",
+            "Maintain hygiene"
+        ]
+    }
+}
+
+# ---------------------------
+# SIDEBAR
 # ---------------------------
 st.sidebar.title("⚙️ Settings")
-st.sidebar.markdown("Adjust your input preferences")
-
 confidence_toggle = st.sidebar.checkbox("Show Confidence Score", True)
 
 st.sidebar.markdown("---")
-st.sidebar.info("Developed for educational purposes")
+st.sidebar.info("Educational Project")
 
 # ---------------------------
 # HEADER
@@ -92,7 +132,7 @@ st.markdown('<div class="subtitle">Smart disease prediction using Machine Learni
 st.markdown("---")
 
 # ---------------------------
-# INPUT SECTION (CARD UI)
+# INPUT SECTION
 # ---------------------------
 st.markdown('<div class="card">', unsafe_allow_html=True)
 
@@ -100,8 +140,7 @@ st.subheader("🧾 Select Your Symptoms")
 
 selected_symptoms = st.multiselect(
     "Choose symptoms",
-    columns,
-    help="Select all symptoms you are experiencing"
+    columns
 )
 
 st.markdown('</div>', unsafe_allow_html=True)
@@ -139,6 +178,7 @@ if predict_btn:
 
         st.success(f"🩺 Predicted Disease: **{prediction}**")
 
+        # Confidence
         if confidence_toggle:
             try:
                 probs = model.predict_proba([input_data])[0]
@@ -146,6 +186,21 @@ if predict_btn:
                 st.info(f"📊 Confidence: {confidence:.2f}%")
             except:
                 st.warning("Confidence not available")
+
+        # Disease Info
+        if prediction in disease_info:
+            info = disease_info[prediction]
+
+            st.subheader("📖 About the Disease")
+            st.write(info["description"])
+
+            st.subheader("🛡️ Precautions")
+            for p in info["precautions"]:
+                st.write(f"✔️ {p}")
+        else:
+            st.warning("No additional info available")
+
+        st.info("👨‍⚕️ Please consult a doctor for proper diagnosis.")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
