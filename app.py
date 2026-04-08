@@ -12,60 +12,55 @@ import shap
 st.set_page_config(page_title="MediPredict AI", page_icon="🩺", layout="centered")
 
 # ---------------------------
-# CLEAN CSS
+# CLEAN CSS (NO UI BUGS)
 # ---------------------------
 st.markdown("""
 <style>
-div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
-.block-container { padding-top: 1.2rem; max-width: 900px; }
+div[data-testid="stVerticalBlock"] > div:empty { display:none !important; }
+.block-container { padding-top:1.2rem; max-width:900px; }
 
-/* HEADER */
 .header {
-    background: linear-gradient(90deg, #4cc9f0, #4361ee);
-    padding: 18px;
-    border-radius: 12px;
-    margin-bottom: 15px;
+    background: linear-gradient(90deg,#4cc9f0,#4361ee);
+    padding:18px;
+    border-radius:12px;
 }
-.title { font-size: 30px; font-weight: 700; color: white; }
-.subtitle { color: #e0e7ff; }
+.title { font-size:30px; font-weight:700; color:white; }
+.subtitle { color:#e0e7ff; }
 
-/* CARD */
 .card {
-    background: #0f172a;
-    padding: 18px;
-    border-radius: 12px;
-    border: 1px solid #1f2937;
-    margin-top: 10px;
+    background:#0f172a;
+    padding:18px;
+    border-radius:12px;
+    border:1px solid #1f2937;
+    margin-top:10px;
 }
 
-/* RESULT */
 .result-card {
-    background: #065f46;
-    padding: 15px;
-    border-radius: 10px;
-    margin-top: 15px;
+    background:#065f46;
+    padding:15px;
+    border-radius:10px;
+    margin-top:15px;
 }
 
-/* CHAT */
 .chat-user {
-    background: #2563eb;
-    color: white;
-    padding: 10px;
-    border-radius: 10px;
-    margin: 5px 0;
-    text-align: right;
+    background:#2563eb;
+    color:white;
+    padding:10px;
+    border-radius:10px;
+    text-align:right;
+    margin:5px 0;
 }
 .chat-bot {
-    background: #1f2937;
-    padding: 10px;
-    border-radius: 10px;
-    margin: 5px 0;
+    background:#1f2937;
+    padding:10px;
+    border-radius:10px;
+    margin:5px 0;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# LOAD MODEL
+# LOAD MODEL (CACHED)
 # ---------------------------
 @st.cache_resource
 def load_model():
@@ -82,12 +77,24 @@ with open("columns.pkl", "rb") as f:
     columns = pickle.load(f)
 
 # ---------------------------
+# SHAP EXPLAINER (CACHED)
+# ---------------------------
+@st.cache_resource
+def get_explainer():
+    try:
+        return shap.TreeExplainer(model)
+    except:
+        return shap.Explainer(model)
+
+explainer = get_explainer()
+
+# ---------------------------
 # HEADER
 # ---------------------------
 st.markdown("""
 <div class="header">
     <div class="title">🩺 MediPredict AI</div>
-    <div class="subtitle">AI-powered disease prediction</div>
+    <div class="subtitle">AI-powered disease prediction system</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -96,11 +103,7 @@ st.markdown("""
 # ---------------------------
 def extract_symptoms(text):
     text = text.lower()
-    found = []
-    for col in columns:
-        if col.replace("_", " ") in text:
-            found.append(col)
-    return found
+    return [col for col in columns if col.replace("_", " ") in text]
 
 def build_vec(symptoms):
     vec = np.zeros(len(columns))
@@ -114,56 +117,44 @@ def predict_top3(symptoms):
     probs = model.predict_proba([vec])[0]
     classes = model.classes_
 
-    top_idx = np.argsort(probs)[-3:][::-1]
-    results = [(classes[i], probs[i]) for i in top_idx]
+    idx = np.argsort(probs)[-3:][::-1]
+    results = [(classes[i], probs[i]) for i in idx]
 
     return results, vec
 
 # ---------------------------
-# SHAP EXPLAINER (cached)
+# SHAP EXPLANATION (SAFE)
 # ---------------------------
-@st.cache_resource
-def get_explainer(_model):
-    # Works well for tree-based models (DecisionTree/RandomForest)
-    return shap.TreeExplainer(_model)
-
 def shap_explain(vec, predicted_class):
-    st.subheader("🧠 Why this prediction? (SHAP)")
+    st.subheader("🧠 Why this prediction?")
 
     try:
-        explainer = shap.TreeExplainer(model)
-
-        # Disable additivity check (fix)
         shap_values = explainer.shap_values(
             np.array([vec]),
             check_additivity=False
         )
 
         class_idx = list(model.classes_).index(predicted_class)
-
         values = shap_values[class_idx][0]
 
-        # Pair features with values
-        pairs = list(zip(columns, values))
+        pairs = [
+            (columns[i], values[i])
+            for i in range(len(vec)) if vec[i] == 1
+        ]
 
-        # Only selected symptoms
-        pairs = [(f, v) for f, v in pairs if vec[columns.index(f)] == 1]
-
-        # Sort by importance
-        pairs = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:8]
+        pairs = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:6]
 
         if not pairs:
             st.warning("No contributing symptoms found")
             return
 
         for feat, val in pairs:
-            if val > 0:
-                st.write(f"🟢 **{feat}** → increases prediction ({val:.3f})")
-            else:
-                st.write(f"🔴 **{feat}** → decreases prediction ({val:.3f})")
+            color = "🟢" if val > 0 else "🔴"
+            st.write(f"{color} **{feat}** → {val:.3f}")
 
-    except Exception as e:
-        st.error("SHAP explanation failed (model compatibility issue)")
+    except:
+        st.warning("Explanation not available for this model")
+
 # ---------------------------
 # SHOW RESULTS
 # ---------------------------
@@ -181,9 +172,7 @@ def show_results(results, vec):
         else:
             st.warning(f"🥉 {disease} ({pct:.2f}%)")
 
-    # SHAP explanation for top prediction
-    top_class = results[0][0]
-    shap_explain(vec, top_class)
+    shap_explain(vec, results[0][0])
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -193,7 +182,7 @@ def show_results(results, vec):
 tab1, tab2 = st.tabs(["📋 Select Symptoms", "💬 Chat Assistant"])
 
 # ---------------------------
-# TAB 1
+# SELECT TAB
 # ---------------------------
 with tab1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -203,7 +192,7 @@ with tab1:
     if st.button("🔍 Predict"):
         if selected:
             with st.spinner("Analyzing..."):
-                time.sleep(1)
+                time.sleep(0.7)
                 results, vec = predict_top3(selected)
             show_results(results, vec)
         else:
@@ -212,7 +201,7 @@ with tab1:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# TAB 2 (CHAT)
+# CHAT TAB
 # ---------------------------
 with tab2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -220,7 +209,7 @@ with tab2:
     if "chat" not in st.session_state:
         st.session_state.chat = []
 
-    user_input = st.text_area("Describe your symptoms")
+    user_input = st.text_area("Describe symptoms")
 
     if st.button("🧠 Analyze"):
         if user_input.strip():
@@ -229,17 +218,17 @@ with tab2:
             st.session_state.chat.append(("user", user_input))
 
             with st.spinner("Thinking..."):
-                time.sleep(1)
+                time.sleep(0.7)
 
             if detected:
                 results, vec = predict_top3(detected)
                 st.session_state.chat.append(("bot", f"Detected: {', '.join(detected)}"))
                 st.session_state.chat.append(("bot", f"Most likely: {results[0][0]}"))
+
                 show_results(results, vec)
             else:
                 st.session_state.chat.append(("bot", "Could not detect symptoms"))
 
-    # Chat display
     for role, msg in st.session_state.chat:
         if role == "user":
             st.markdown(f'<div class="chat-user">🧑 {msg}</div>', unsafe_allow_html=True)
