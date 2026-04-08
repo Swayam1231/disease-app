@@ -11,37 +11,22 @@ import time
 st.set_page_config(page_title="MediPredict AI", page_icon="🩺", layout="centered")
 
 # ---------------------------
-# ADVANCED UI CSS
+# CLEAN CSS
 # ---------------------------
 st.markdown("""
 <style>
-
-/* REMOVE EMPTY BLOCKS */
-div[data-testid="stVerticalBlock"] > div:empty {
-    display: none !important;
-}
-
-/* GLOBAL */
-.block-container {
-    padding-top: 1.2rem;
-    max-width: 900px;
-}
+div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
+.block-container { padding-top: 1.2rem; max-width: 900px; }
 
 /* HEADER */
 .header {
     background: linear-gradient(90deg, #4cc9f0, #4361ee);
-    padding: 20px;
+    padding: 18px;
     border-radius: 12px;
     margin-bottom: 15px;
 }
-.title {
-    font-size: 32px;
-    font-weight: 700;
-    color: white;
-}
-.subtitle {
-    color: #e0e7ff;
-}
+.title { font-size: 30px; font-weight: 700; color: white; }
+.subtitle { color: #e0e7ff; }
 
 /* CARD */
 .card {
@@ -64,29 +49,17 @@ div[data-testid="stVerticalBlock"] > div:empty {
 .chat-user {
     background: #2563eb;
     color: white;
-    padding: 10px 14px;
-    border-radius: 12px;
-    margin: 6px 0;
+    padding: 10px;
+    border-radius: 10px;
+    margin: 5px 0;
     text-align: right;
 }
 .chat-bot {
     background: #1f2937;
-    padding: 10px 14px;
-    border-radius: 12px;
-    margin: 6px 0;
-}
-
-/* BUTTON */
-.stButton button {
+    padding: 10px;
     border-radius: 10px;
-    height: 45px;
+    margin: 5px 0;
 }
-
-/* INPUT FIX */
-.stTextArea textarea {
-    border-radius: 10px;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -108,17 +81,17 @@ with open("columns.pkl", "rb") as f:
     columns = pickle.load(f)
 
 # ---------------------------
-# HEADER UI
+# HEADER
 # ---------------------------
 st.markdown("""
 <div class="header">
     <div class="title">🩺 MediPredict AI</div>
-    <div class="subtitle">Smart disease prediction using Machine Learning</div>
+    <div class="subtitle">AI-powered disease prediction</div>
 </div>
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# HELPERS
+# HELPER FUNCTIONS
 # ---------------------------
 def extract_symptoms(text):
     text = text.lower()
@@ -128,16 +101,42 @@ def extract_symptoms(text):
             found.append(col)
     return found
 
-def predict(symptoms):
+def predict_top3(symptoms):
     vec = np.zeros(len(columns))
     for s in symptoms:
         if s in columns:
             vec[columns.index(s)] = 1
-    return model.predict([vec])[0]
 
-def show_result(pred):
+    probs = model.predict_proba([vec])[0]
+    classes = model.classes_
+
+    top_idx = np.argsort(probs)[-3:][::-1]
+    results = [(classes[i], probs[i]) for i in top_idx]
+
+    return results, probs, classes
+
+def show_results(results, probs, classes):
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
-    st.success(f"🩺 Predicted Disease: {pred}")
+
+    st.subheader("🩺 Top Predictions")
+
+    for i, (disease, prob) in enumerate(results):
+        pct = prob * 100
+        if i == 0:
+            st.success(f"🥇 {disease} ({pct:.2f}%)")
+        elif i == 1:
+            st.info(f"🥈 {disease} ({pct:.2f}%)")
+        else:
+            st.warning(f"🥉 {disease} ({pct:.2f}%)")
+
+    # ---------------------------
+    # GRAPH VISUALIZATION
+    # ---------------------------
+    st.subheader("📊 Prediction Probabilities")
+
+    chart_data = {classes[i]: probs[i] for i in range(len(classes))}
+    st.bar_chart(chart_data)
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
@@ -157,15 +156,15 @@ with tab1:
         if selected:
             with st.spinner("Analyzing..."):
                 time.sleep(1)
-                pred = predict(selected)
-            show_result(pred)
+                results, probs, classes = predict_top3(selected)
+            show_results(results, probs, classes)
         else:
             st.warning("Select symptoms first")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# TAB 2 (CHAT UI)
+# TAB 2 (CHAT)
 # ---------------------------
 with tab2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -185,13 +184,15 @@ with tab2:
                 time.sleep(1)
 
             if detected:
-                pred = predict(detected)
+                results, probs, classes = predict_top3(detected)
+
                 st.session_state.chat.append(("bot", f"Detected: {', '.join(detected)}"))
-                st.session_state.chat.append(("bot", f"Prediction: {pred}"))
+                st.session_state.chat.append(("bot", f"Most likely: {results[0][0]}"))
+
+                show_results(results, probs, classes)
             else:
                 st.session_state.chat.append(("bot", "Could not detect symptoms"))
 
-    # CHAT DISPLAY
     for role, msg in st.session_state.chat:
         if role == "user":
             st.markdown(f'<div class="chat-user">🧑 {msg}</div>', unsafe_allow_html=True)
