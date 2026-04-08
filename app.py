@@ -18,7 +18,6 @@ st.markdown("""
 div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
 .block-container { padding-top: 1.2rem; max-width: 900px; }
 
-/* HEADER */
 .header {
     background: linear-gradient(90deg, #4cc9f0, #4361ee);
     padding: 18px;
@@ -28,7 +27,6 @@ div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
 .title { font-size: 30px; font-weight: 700; color: white; }
 .subtitle { color: #e0e7ff; }
 
-/* CARD */
 .card {
     background: #0f172a;
     padding: 18px;
@@ -37,7 +35,6 @@ div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
     margin-top: 10px;
 }
 
-/* RESULT */
 .result-card {
     background: #065f46;
     padding: 15px;
@@ -45,7 +42,6 @@ div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
     margin-top: 15px;
 }
 
-/* CHAT */
 .chat-user {
     background: #2563eb;
     color: white;
@@ -113,9 +109,29 @@ def predict_top3(symptoms):
     top_idx = np.argsort(probs)[-3:][::-1]
     results = [(classes[i], probs[i]) for i in top_idx]
 
-    return results, probs, classes
+    return results, vec
 
-def show_results(results, probs, classes):
+# ---------------------------
+# EXPLAIN PREDICTION
+# ---------------------------
+def explain_prediction(vec):
+    if hasattr(model, "feature_importances_"):
+        importance = model.feature_importances_
+
+        # get top contributing symptoms
+        indices = np.argsort(importance)[-5:][::-1]
+
+        st.subheader("🧠 Why this prediction?")
+        st.write("Top contributing symptoms:")
+
+        for i in indices:
+            if vec[i] == 1:
+                st.write(f"✔️ {columns[i]} (importance: {importance[i]:.2f})")
+
+# ---------------------------
+# SHOW RESULTS
+# ---------------------------
+def show_results(results, vec):
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
 
     st.subheader("🩺 Top Predictions")
@@ -129,13 +145,7 @@ def show_results(results, probs, classes):
         else:
             st.warning(f"🥉 {disease} ({pct:.2f}%)")
 
-    # ---------------------------
-    # GRAPH VISUALIZATION
-    # ---------------------------
-    st.subheader("📊 Prediction Probabilities")
-
-    chart_data = {classes[i]: probs[i] for i in range(len(classes))}
-    st.bar_chart(chart_data)
+    explain_prediction(vec)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -156,8 +166,8 @@ with tab1:
         if selected:
             with st.spinner("Analyzing..."):
                 time.sleep(1)
-                results, probs, classes = predict_top3(selected)
-            show_results(results, probs, classes)
+                results, vec = predict_top3(selected)
+            show_results(results, vec)
         else:
             st.warning("Select symptoms first")
 
@@ -172,7 +182,7 @@ with tab2:
     if "chat" not in st.session_state:
         st.session_state.chat = []
 
-    user_input = st.text_area("Describe your symptoms", placeholder="I have fever and headache")
+    user_input = st.text_area("Describe your symptoms")
 
     if st.button("🧠 Analyze"):
         if user_input.strip():
@@ -184,12 +194,12 @@ with tab2:
                 time.sleep(1)
 
             if detected:
-                results, probs, classes = predict_top3(detected)
+                results, vec = predict_top3(detected)
 
                 st.session_state.chat.append(("bot", f"Detected: {', '.join(detected)}"))
                 st.session_state.chat.append(("bot", f"Most likely: {results[0][0]}"))
 
-                show_results(results, probs, classes)
+                show_results(results, vec)
             else:
                 st.session_state.chat.append(("bot", "Could not detect symptoms"))
 
