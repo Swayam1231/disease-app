@@ -4,6 +4,7 @@ import pickle
 import gdown
 import os
 import time
+import shap
 
 # ---------------------------
 # PAGE CONFIG
@@ -18,6 +19,7 @@ st.markdown("""
 div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
 .block-container { padding-top: 1.2rem; max-width: 900px; }
 
+/* HEADER */
 .header {
     background: linear-gradient(90deg, #4cc9f0, #4361ee);
     padding: 18px;
@@ -27,6 +29,7 @@ div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
 .title { font-size: 30px; font-weight: 700; color: white; }
 .subtitle { color: #e0e7ff; }
 
+/* CARD */
 .card {
     background: #0f172a;
     padding: 18px;
@@ -35,6 +38,7 @@ div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
     margin-top: 10px;
 }
 
+/* RESULT */
 .result-card {
     background: #065f46;
     padding: 15px;
@@ -42,6 +46,7 @@ div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
     margin-top: 15px;
 }
 
+/* CHAT */
 .chat-user {
     background: #2563eb;
     color: white;
@@ -87,7 +92,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# HELPER FUNCTIONS
+# HELPERS
 # ---------------------------
 def extract_symptoms(text):
     text = text.lower()
@@ -97,12 +102,15 @@ def extract_symptoms(text):
             found.append(col)
     return found
 
-def predict_top3(symptoms):
+def build_vec(symptoms):
     vec = np.zeros(len(columns))
     for s in symptoms:
         if s in columns:
             vec[columns.index(s)] = 1
+    return vec
 
+def predict_top3(symptoms):
+    vec = build_vec(symptoms)
     probs = model.predict_proba([vec])[0]
     classes = model.classes_
 
@@ -112,21 +120,43 @@ def predict_top3(symptoms):
     return results, vec
 
 # ---------------------------
-# EXPLAIN PREDICTION
+# SHAP EXPLAINER (cached)
 # ---------------------------
-def explain_prediction(vec):
-    if hasattr(model, "feature_importances_"):
-        importance = model.feature_importances_
+@st.cache_resource
+def get_explainer(_model):
+    # Works well for tree-based models (DecisionTree/RandomForest)
+    return shap.TreeExplainer(_model)
 
-        # get top contributing symptoms
-        indices = np.argsort(importance)[-5:][::-1]
+def shap_explain(vec, predicted_class):
+    st.subheader("🧠 Why this prediction? (SHAP)")
 
-        st.subheader("🧠 Why this prediction?")
-        st.write("Top contributing symptoms:")
+    explainer = get_explainer(model)
 
-        for i in indices:
-            if vec[i] == 1:
-                st.write(f"✔️ {columns[i]} (importance: {importance[i]:.2f})")
+    # SHAP values for single sample
+    shap_values = explainer.shap_values(np.array([vec]))
+
+    # For multiclass: pick the class index
+    class_idx = list(model.classes_).index(predicted_class)
+
+    values = shap_values[class_idx][0]  # contributions for this sample
+
+    # Pair feature names with SHAP values
+    pairs = list(zip(columns, values))
+
+    # Filter only active (selected) symptoms
+    pairs = [(f, v) for f, v in pairs if vec[columns.index(f)] == 1]
+
+    # Sort by contribution magnitude
+    pairs = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)[:8]
+
+    if not pairs:
+        st.warning("No contributing symptoms found")
+        return
+
+    # Display as simple bars (clean UI)
+    for feat, val in pairs:
+        direction = "🟢 increases" if val > 0 else "🔴 decreases"
+        st.write(f"**{feat}** → {direction} prediction ({val:.3f})")
 
 # ---------------------------
 # SHOW RESULTS
@@ -145,7 +175,9 @@ def show_results(results, vec):
         else:
             st.warning(f"🥉 {disease} ({pct:.2f}%)")
 
-    explain_prediction(vec)
+    # SHAP explanation for top prediction
+    top_class = results[0][0]
+    shap_explain(vec, top_class)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -195,14 +227,13 @@ with tab2:
 
             if detected:
                 results, vec = predict_top3(detected)
-
                 st.session_state.chat.append(("bot", f"Detected: {', '.join(detected)}"))
                 st.session_state.chat.append(("bot", f"Most likely: {results[0][0]}"))
-
                 show_results(results, vec)
             else:
                 st.session_state.chat.append(("bot", "Could not detect symptoms"))
 
+    # Chat display
     for role, msg in st.session_state.chat:
         if role == "user":
             st.markdown(f'<div class="chat-user">🧑 {msg}</div>', unsafe_allow_html=True)
